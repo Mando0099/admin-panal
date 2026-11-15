@@ -14,9 +14,6 @@ from app.security import *
 from app.config import settings
 from app.providers.fawaterak import Fawaterak,ProviderNotReady
 
-from alembic.config import Config
-from alembic import command
-
 app=FastAPI(title="MerchantHub API",version="0.1.0")
 
 _origins=[x.strip() for x in settings.cors_origins.split(",") if x.strip()]
@@ -43,12 +40,6 @@ class WithdrawalIn(BaseModel):
 
 @app.on_event("startup")
 def bootstrap():
-    try:
-        alembic_cfg = Config("alembic.ini")
-        command.upgrade(alembic_cfg, "head")
-    except Exception as e:
-        print(f"Migration error: {e}")
-
     db=next(get_db())
     try:
         admin_email = settings.admin_email.strip().lower()
@@ -78,7 +69,7 @@ def login(form:OAuth2PasswordRequestForm=Depends(),db:Session=Depends(get_db)):
     email = form.username.strip().lower()
     u = db.query(User).filter(func.lower(User.email) == email).first()
     if not u or not u.active or not verify_password(form.password, u.password_hash):
-        raise HTTPException(401, "بيانات البريد الإلكتروني أو كلمة المرور غير صحيحة")
+        raise HTTPException(401, "Invalid email or password")
     return {"access_token":token_for(u),"token_type":"bearer","role":u.role}
 
 @app.get("/admin/health")
@@ -130,7 +121,7 @@ async def payment(d:PaymentIn,db:Session=Depends(get_db),x_api_key:str=Header(de
         p.checkout_url=result.get("url") or result.get("payment_url");p.status="pending";db.commit()
         return {"order_id":p.id,"status":p.status,"provider":result}
     except ProviderNotReady as e: db.rollback();raise HTTPException(503,str(e))
-    except Exception: db.rollback();raise HTTPException(502,"Provider request failed; verify account-specific integration mapping")
+    except Exception: db.rollback();raise HTTPException(502,"Provider request failed")
 
 @app.get("/merchant/payments")
 def my_payments(db:Session=Depends(get_db),u:User=Depends(merchant_user)):
