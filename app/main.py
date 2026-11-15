@@ -14,6 +14,10 @@ from app.security import *
 from app.config import settings
 from app.providers.fawaterak import Fawaterak,ProviderNotReady
 
+# تم إضافة مكتبات Alembic لتشغيل الـ Migrations تلقائياً عند البدء
+from alembic.config import Config
+from alembic import command
+
 app=FastAPI(title="MerchantHub API",version="0.1.0")
 
 _origins=[x.strip() for x in settings.cors_origins.split(",") if x.strip()]
@@ -40,6 +44,13 @@ class WithdrawalIn(BaseModel):
 
 @app.on_event("startup")
 def bootstrap():
+    # تشغيل هجرات Alembic تلقائياً أول ما السيرفر يقوم
+    try:
+        alembic_cfg = Config("alembic.ini")
+        command.upgrade(alembic_cfg, "head")
+    except Exception as e:
+        print(f"Migration error: {e}")
+
     db=next(get_db())
     try:
         admin_email = settings.admin_email.strip().lower()
