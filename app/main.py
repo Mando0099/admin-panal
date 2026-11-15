@@ -144,3 +144,12 @@ async def webhook(req:Request,db:Session=Depends(get_db),x_provider_signature:st
     if db.query(WebhookEvent).filter_by(provider_event_id=event_id).first(): return {"received":True,"duplicate":True}
     db.add(WebhookEvent(provider_event_id=event_id,payload_text=raw.decode(),processed=False));db.commit()
     return {"received":True,"queued_for_verification":True}
+
+    Frontend Static Files
+FRONTEND_DIR = Path(file).resolve().parent.parent / "frontend"
+if FRONTEND_DIR.exists():
+app.mount(
+"/",
+StaticFiles(directory=str(FRONTEND_DIR), html=True),
+name="frontend"
+)
