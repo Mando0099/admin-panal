@@ -14,7 +14,6 @@ from app.security import *
 from app.config import settings
 from app.providers.fawaterak import Fawaterak,ProviderNotReady
 
-# تم إضافة مكتبات Alembic لتشغيل الـ Migrations تلقائياً عند البدء
 from alembic.config import Config
 from alembic import command
 
@@ -44,7 +43,6 @@ class WithdrawalIn(BaseModel):
 
 @app.on_event("startup")
 def bootstrap():
-    # تشغيل هجرات Alembic تلقائياً أول ما السيرفر يقوم
     try:
         alembic_cfg = Config("alembic.ini")
         command.upgrade(alembic_cfg, "head")
