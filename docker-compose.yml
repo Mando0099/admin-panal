@@ -1,0 +1,26 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: merchanthub
+      POSTGRES_USER: merchanthub
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-CHANGE_ME}
+    volumes: [postgres_data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL","pg_isready -U merchanthub -d merchanthub"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+  api:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://merchanthub:${DB_PASSWORD:-CHANGE_ME}@db:5432/merchanthub
+    depends_on:
+      db:
+        condition: service_healthy
+    ports: ["8000:8000"]
+volumes:
+  postgres_data:
